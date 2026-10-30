@@ -1,0 +1,97 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model AdminUser {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String   @default("Administrator")
+  role         String   @default("ADMIN")
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model PageSeo {
+  id               String   @id @default(cuid())
+  path             String   @unique
+  pageName         String
+  metaTitle        String   @default("")
+  metaDescription  String   @default("")
+  canonicalUrl     String   @default("")
+  focusKeyword     String   @default("")
+  ogTitle          String   @default("")
+  ogDescription    String   @default("")
+  ogImage          String   @default("")
+  robotsIndex      Boolean  @default(true)
+  robotsFollow     Boolean  @default(true)
+  schemaMarkup     Json?
+  updatedAt        DateTime @updatedAt
+  createdAt        DateTime @default(now())
+}
+
+model Blog {
+  id               String    @id @default(cuid())
+  title            String
+  slug             String    @unique
+  excerpt          String    @default("")
+  content          String    @default("")
+  contentBlocks    Json?
+  featuredImage    String    @default("")
+  metaTitle        String    @default("")
+  metaDescription  String    @default("")
+  focusKeyword     String    @default("")
+  canonicalUrl     String    @default("")
+  status           String    @default("DRAFT")
+  publishedAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+
+model Redirect {
+  id          String   @id @default(cuid())
+  fromPath    String   @unique
+  toPath      String
+  statusCode  Int      @default(301)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model SiteSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  adminId   String?
+  action    String
+  entity    String
+  entityId  String?
+  details   Json?
+  createdAt DateTime @default(now())
+}
+
+
+model Lead {
+  id          String   @id @default(cuid())
+  formType    String
+  name        String   @default("")
+  email       String   @default("")
+  phone       String   @default("")
+  message     String   @default("")
+  payload     Json
+  status      String   @default("NEW")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

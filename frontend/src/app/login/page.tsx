@@ -1,0 +1,9 @@
+'use client';
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { api } from "@/lib/api";
+export default function LoginPage(){
+ const [email,setEmail]=useState(""); const [password,setPassword]=useState(""); const [error,setError]=useState(""); const [busy,setBusy]=useState(false); const router=useRouter();
+ async function submit(e:React.FormEvent){e.preventDefault();setError("");setBusy(true);try{const result=await api("/auth/login",{method:"POST",body:JSON.stringify({email,password})});localStorage.setItem("fundastra_admin_token",result.token);localStorage.setItem("fundastra_admin_user",JSON.stringify(result.admin));router.push("/pages");}catch(err){setError(err instanceof Error?err.message:"Login failed");}finally{setBusy(false);}}
+ return <main className="min-h-screen flex items-center justify-center p-5"><form onSubmit={submit} className="w-full max-w-sm bg-white border border-[#e7eae5] rounded-xl p-8 shadow-sm"><div className="text-sm tracking-[.2em] font-semibold text-[#073b32]">FUND ASTRA</div><h1 className="text-2xl font-semibold mt-5">Admin login</h1><p className="text-sm text-gray-500 mt-1 mb-7">Sign in to manage your website.</p><label className="text-sm font-medium">Email</label><input type="email" required value={email} onChange={e=>setEmail(e.target.value)} className="w-full border rounded-lg p-3 mt-1 mb-4 outline-none focus:border-[#073b32]"/><label className="text-sm font-medium">Password</label><input type="password" required value={password} onChange={e=>setPassword(e.target.value)} className="w-full border rounded-lg p-3 mt-1 mb-4 outline-none focus:border-[#073b32]"/>{error&&<p className="text-sm text-red-600 mb-3">{error}</p>}<button disabled={busy} className="w-full bg-[#073b32] text-white rounded-lg py-3 disabled:opacity-60">{busy?"Signing in...":"Sign in"}</button></form></main>
+}
