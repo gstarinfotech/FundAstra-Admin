@@ -18,8 +18,8 @@ type Lead = {
 
 const FORM_TYPE_LABELS: Record<string, string> = {
     home_triage: "Home – Plan Your Capital",
-    contact_inquiry: "Contact – Mandate Appraisal",
     contact_us: "Home – Get in Touch",
+    contact_inquiry: "Contact – Mandate Appraisal"
 };
 
 export default function LeadsPage() {
