@@ -5,6 +5,7 @@ import pageRoutes from "./routes/pages.js";
 import blogRoutes from "./routes/blogs.js";
 import leadRoutes from "./routes/leads.js";
 import uploadRoutes from "./routes/uploads.js";
+import settingsRoutes from "./routes/settings.js";
 import publicRoutes from "./routes/public.js";
 const app=express();
 const origins=(process.env.CORS_ORIGINS??"http://localhost:3001,http://localhost:3000").split(",").map(v=>v.trim());
@@ -20,6 +21,7 @@ app.use("/api/auth",authRoutes);
 app.use("/api/pages",pageRoutes);
 app.use("/api/blogs",blogRoutes);
 app.use("/api/leads",leadRoutes);
+app.use("/api/settings", settingsRoutes);
 app.use("/api/uploads",uploadRoutes);
 app.use((err:Error,_req:express.Request,res:express.Response,_next:express.NextFunction)=>{
 console.error(err.message);
