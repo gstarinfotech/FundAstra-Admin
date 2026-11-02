@@ -49,6 +49,11 @@ model Blog {
   metaDescription  String    @default("")
   focusKeyword     String    @default("")
   canonicalUrl     String    @default("")
+  ogTitle          String    @default("")
+  ogDescription    String    @default("")
+  ogImage          String    @default("")
+  robotsIndex      Boolean   @default(true)
+  robotsFollow     Boolean   @default(true)
   status           String    @default("DRAFT")
   publishedAt      DateTime?
   createdAt        DateTime  @default(now())
