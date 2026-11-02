@@ -1,287 +1,153 @@
-'use client';
+import { Router } from "express";
+import { z } from "zod";
+import { prisma } from "../lib/prisma.js";
+import { requireAuth, type AuthRequest } from "../middleware/auth.js";
+import { Prisma } from "@prisma/client";
 
-import { useEffect, useState } from "react";
-import AdminShell from "@/components/AdminShell";
-import { api } from "@/lib/api";
+const router = Router();
 
-type Lead = {
-    id: string;
-    formType: string;
-    name: string;
-    email: string;
-    phone: string;
-    message: string;
-    payload: Record<string, any>;
-    status: string;
-    createdAt: string;
+router.use(requireAuth);
+
+const DEFAULT_TRACKING = {
+    enabled: true,
+    headCode: `<script async src="https://www.googletagmanager.com/gtag/js?id=G-Y560F8W6VL"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){window.dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-Y560F8W6VL');
+</script>`,
+    bodyStartCode: "",
+    bodyEndCode: "",
 };
 
-export default function LeadsPage() {
-    const [rows, setRows] = useState<Lead[]>([]);
-    const [selected, setSelected] = useState<Lead | null>(null);
-    const [filter, setFilter] = useState("ALL");
-    const [error, setError] = useState("");
+const trackingSchema = z.object({
+    enabled: z.boolean(),
+    headCode: z.string().max(50000),
+    bodyStartCode: z.string().max(50000),
+    bodyEndCode: z.string().max(50000),
+});
 
-    async function load() {
-        try {
-            setRows(await api("/leads"));
-        } catch (e) {
-            setError(e instanceof Error ? e.message : "Could not load leads");
-        }
+// Existing settings API
+router.get("/", async (_req, res) => {
+    const rows = await prisma.siteSetting.findMany();
+
+    res.json(
+        Object.fromEntries(rows.map((row) => [row.key, row.value]))
+    );
+});
+
+// Existing settings API
+router.put("/", async (req, res) => {
+    const parsed = z.record(z.string(), z.any()).safeParse(req.body);
+
+    if (!parsed.success) {
+        return res.status(400).json({ message: "Settings must be an object" });
     }
 
-    useEffect(() => {
-        load();
-    }, []);
+    const entries = Object.entries(parsed.data);
 
-    async function status(id: string, status: string) {
-        try {
-            await api(`/leads/${id}`, {
-                method: "PATCH",
-                body: JSON.stringify({ status }),
-            });
+    await prisma.$transaction(
+        entries.map(([key, value]) =>
+            prisma.siteSetting.upsert({
+                where: { key },
+                create: { key, value },
+                update: { value },
+            })
+        )
+    );
 
-            await load();
-            setSelected(s => s ? { ...s, status } : s);
-        } catch (e) {
-            setError(e instanceof Error ? e.message : "Could not update lead");
-        }
-    }
+    res.json({ success: true });
+});
 
-    const shown = filter === "ALL"
-        ? rows
-        : rows.filter(r => r.status === filter);
+// Get tracking settings
+router.get("/tracking", async (_req, res) => {
+    const setting = await prisma.siteSetting.findUnique({
+        where: { key: "trackingScripts" },
+    });
 
-    // Convert field keys into readable labels
-    function formatLabel(key: string) {
-        return key
-            .replace(/([A-Z])/g, " $1")
-            .replace(/[_-]/g, " ")
-            .replace(/\s+/g, " ")
-            .trim()
-            .replace(/^./, char => char.toUpperCase());
-    }
+    const value =
+        setting?.value &&
+            typeof setting.value === "object" &&
+            !Array.isArray(setting.value)
+            ? setting.value as Record<string, unknown>
+            : {};
 
-    // Format submitted field values
-    function formatValue(value: any): string {
-        if (value === null || value === undefined || value === "") {
-            return "—";
-        }
+    res.json({
+        enabled:
+            typeof value.enabled === "boolean"
+                ? value.enabled
+                : DEFAULT_TRACKING.enabled,
 
-        if (Array.isArray(value)) {
-            return value.map(item => formatValue(item)).join(", ");
-        }
+        headCode:
+            typeof value.headCode === "string"
+                ? value.headCode
+                : DEFAULT_TRACKING.headCode,
 
-        if (typeof value === "object") {
-            return Object.entries(value)
-                .map(([key, val]) => `${formatLabel(key)}: ${formatValue(val)}`)
-                .join(" · ");
-        }
+        bodyStartCode:
+            typeof value.bodyStartCode === "string"
+                ? value.bodyStartCode
+                : DEFAULT_TRACKING.bodyStartCode,
 
-        if (typeof value === "boolean") {
-            return value ? "Yes" : "No";
-        }
+        bodyEndCode:
+            typeof value.bodyEndCode === "string"
+                ? value.bodyEndCode
+                : DEFAULT_TRACKING.bodyEndCode,
+    });
+});
 
-        return String(value);
-    }
+// Update tracking settings
+router.put("/tracking", async (req, res) => {
+    const parsed = trackingSchema.safeParse(req.body);
 
-    // Show only additional fields, without repeating basic details
-    function getAdditionalFields(lead: Lead) {
-        const payload = lead.payload || {};
-
-        const excludedFields = [
-            "id",
-            "name",
-            "fullName",
-            "email",
-            "phone",
-            "message",
-            "source",
-            "formType",
-            "submittedAt",
-            "status",
-        ];
-
-        return Object.entries(payload).filter(([key, value]) => {
-            return !excludedFields.includes(key) &&
-                value !== null &&
-                value !== undefined &&
-                value !== "";
+    if (!parsed.success) {
+        return res.status(400).json({
+            message: "Invalid tracking settings. Please check the fields.",
         });
     }
 
-    return (
-        <AdminShell>
-            <div className="flex flex-wrap justify-between items-end gap-3 mb-6">
-                <div>
-                    <h1 className="text-2xl font-semibold">Lead Management</h1>
-                    <p className="text-sm text-gray-500 mt-1">
-                        Enquiries received from all website forms.
-                    </p>
-                </div>
+    const adminReq = req as AuthRequest;
+    const data = parsed.data;
 
-                <select
-                    value={filter}
-                    onChange={e => setFilter(e.target.value)}
-                    className="border rounded-lg p-2 text-sm"
-                >
-                    <option value="ALL">All leads</option>
-                    <option value="NEW">New</option>
-                    <option value="CONTACTED">Contacted</option>
-                    <option value="CLOSED">Closed</option>
-                </select>
-            </div>
+    try {
+        await prisma.$transaction(async (tx) => {
+            await tx.siteSetting.upsert({
+                where: { key: "trackingScripts" },
+                create: {
+                    key: "trackingScripts",
+                    value: data as Prisma.InputJsonValue,
+                },
+                update: {
+                    value: data as Prisma.InputJsonValue,
+                },
+            });
 
-            {error && (
-                <p className="text-red-600 text-sm mb-3">{error}</p>
-            )}
+            await tx.activityLog.create({
+                data: {
+                    adminId: adminReq.admin?.id,
+                    action: "UPDATE",
+                    entity: "TrackingScripts",
+                    details: {
+                        enabled: data.enabled,
+                        headCodeLength: data.headCode.length,
+                        bodyStartCodeLength: data.bodyStartCode.length,
+                        bodyEndCodeLength: data.bodyEndCode.length,
+                    } as Prisma.InputJsonValue,
+                },
+            });
+        });
 
-            <div className="grid xl:grid-cols-[1fr_360px] gap-5 items-start">
-                {/* Leads List */}
-                <div className="bg-white border rounded-xl overflow-hidden">
-                    <div className="p-4 border-b text-sm font-medium">
-                        {shown.length} enquiries
-                    </div>
+        res.json({
+            success: true,
+            message: "Tracking settings saved successfully.",
+        });
+    } catch (error) {
+        console.error("Tracking settings update failed:", error);
 
-                    {shown.length === 0 ? (
-                        <p className="p-6 text-sm text-gray-500">
-                            No enquiries found yet. New website submissions
-                            will appear here once the forms are connected
-                            to the leads API.
-                        </p>
-                    ) : (
-                        shown.map(l => (
-                            <button
-                                key={l.id}
-                                onClick={() => setSelected(l)}
-                                className={`w-full text-left p-4 border-b hover:bg-gray-50 ${selected?.id === l.id ? "bg-[#edf3ef]" : ""
-                                    }`}
-                            >
-                                <div className="flex flex-wrap justify-between gap-2">
-                                    <span className="font-medium text-sm">
-                                        {l.name || "Website enquiry"}
-                                    </span>
+        res.status(500).json({
+            message: "Unable to save tracking settings.",
+        });
+    }
+});
 
-                                    <span className="text-[11px] rounded-full bg-gray-100 px-2 py-1">
-                                        {l.status}
-                                    </span>
-                                </div>
-
-                                <div className="text-xs text-gray-500 mt-1">
-                                    {formatLabel(l.formType)} · {l.email} · {l.phone}
-                                </div>
-
-                                <div className="text-xs text-gray-400 mt-1">
-                                    {new Date(l.createdAt).toLocaleString()}
-                                </div>
-                            </button>
-                        ))
-                    )}
-                </div>
-
-                {/* Enquiry Details */}
-                {selected && (
-                    <aside className="bg-white border rounded-xl p-5 space-y-4">
-                        <div className="flex justify-between items-center">
-                            <h2 className="font-semibold">
-                                Enquiry Details
-                            </h2>
-
-                            <button
-                                onClick={() => setSelected(null)}
-                                className="text-gray-500 text-xl"
-                            >
-                                ×
-                            </button>
-                        </div>
-
-                        <Detail
-                            label="Form"
-                            value={formatLabel(selected.formType)}
-                        />
-
-                        <Detail
-                            label="Name"
-                            value={selected.name}
-                        />
-
-                        <Detail
-                            label="Email"
-                            value={selected.email}
-                        />
-
-                        <Detail
-                            label="Phone"
-                            value={selected.phone}
-                        />
-
-                        {/* Additional Form Fields */}
-                        {getAdditionalFields(selected).map(([key, value]) => (
-                            <Detail
-                                key={key}
-                                label={formatLabel(key)}
-                                value={formatValue(value)}
-                            />
-                        ))}
-
-                        <div>
-                            <div className="text-xs text-gray-500">
-                                Message
-                            </div>
-
-                            <div className="text-sm mt-1 break-words whitespace-pre-wrap bg-gray-50 p-3 rounded-lg">
-                                {selected.message || "—"}
-                            </div>
-                        </div>
-
-                        <div>
-                            <div className="text-xs text-gray-500">
-                                Submitted At
-                            </div>
-
-                            <div className="text-sm mt-0.5">
-                                {new Date(selected.createdAt).toLocaleString()}
-                            </div>
-                        </div>
-
-                        <div className="pt-2 border-t">
-                            <label className="text-xs text-gray-500">
-                                Lead Status
-                            </label>
-
-                            <select
-                                value={selected.status}
-                                onChange={e => status(selected.id, e.target.value)}
-                                className="w-full border rounded-lg p-2 text-sm mt-1"
-                            >
-                                <option value="NEW">New</option>
-                                <option value="CONTACTED">Contacted</option>
-                                <option value="CLOSED">Closed</option>
-                            </select>
-                        </div>
-                    </aside>
-                )}
-            </div>
-        </AdminShell>
-    );
-}
-
-function Detail({
-    label,
-    value,
-}: {
-    label: string;
-    value: string;
-}) {
-    return (
-        <div>
-            <div className="text-xs text-gray-500">
-                {label}
-            </div>
-
-            <div className="text-sm mt-0.5 break-words">
-                {value || "—"}
-            </div>
-        </div>
-    );
-}
+export default router;
